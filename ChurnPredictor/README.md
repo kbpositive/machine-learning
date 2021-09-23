@@ -1,1 +1,1 @@
-# Breaking down churn prediction in Python
+# Breaking down churn prediction in Python using the [Online Retail II]("https://www.kaggle.com/mathchi/online-retail-ii-data-set-from-ml-repository") churn dataset

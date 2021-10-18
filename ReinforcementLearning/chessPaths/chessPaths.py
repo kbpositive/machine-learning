@@ -57,10 +57,10 @@ class Piece:
     def makeNet(self, length):
         model = models.Sequential(
             [
-                layers.Dense(length, input_shape=(64,), activation="tanh"),
+                layers.Dense(length, input_shape=(64,), activation="sigmoid"),
             ]
         )
-        optimizer = optimizers.Adam(learning_rate=0.0375)
+        optimizer = optimizers.Adam(learning_rate=0.025)
         model.compile(
             loss=self.reinforce,
             optimizer=optimizer,
@@ -69,44 +69,31 @@ class Piece:
         return model
 
     def reinforce(self, actual, pred):
-        pShift = lambda x: (x + 1.0) / 2.0
-        return pShift(pred) - pShift(actual) * tf.math.log(pShift(pred))
+        return -((actual) * tf.math.log(pred))
 
-    def rollout(self, board, moves, state, timesteps, depth=1):
-        if (-1) >= timesteps:
-            return 0
+    def policy(self, x):
+        return self.model(np.array([board.state(x)]))[0]
 
-        policy = lambda x: self.model(np.array([board.state(x)]))[0]
-        action = policy(state)
-        state_shift = np.array(action + np.abs(np.min(action))) ** (
-            timesteps + depth - 1
-        )
+    def rollout(self, board, moves, state, timesteps):
+        def next_state(x):
+            return np.array(board.valid_move(x, moves[random.choices(range(len(moves)), k=1, weights=self.policy(x))[0]]))
+        
+        p = random.choices(range(len(moves)), k=1, weights=self.policy(state))[0]
+        states = [np.array(board.valid_move(state, moves[p]))]
 
-        next_action = np.argmax(policy(state))
-        guess = random.choices(moves, k=1, weights=state_shift)[0]
-        if board.reward(state) == 1.0 or board.reward(state) == -1.0:
-            next_action = 0
-            guess = moves[0]
+        for i in range(1,timesteps):
+            states.append(next_state(states[-1]))
 
-        acc_rewards = (
-            self.rollout(
-                board,
-                moves,
-                np.array(board.valid_move(state, guess)),
-                timesteps - 1,
-                depth + 1,
-            )
-            * (self.discount ** depth)
-        )
-
-        return (
-            np.array(
+        advantage = 0.0
+        for i in range(timesteps-1,0,-1):
+            advantage = (board.reward(states[i]) + advantage - self.policy(states[i-1])) * (self.discount ** (i))
+        
+        advantage *= np.eye(len(moves))[p]
+        advantage += np.array(
                 [board.reward(board.valid_move(state, action)) for action in moves]
-            )
-            + (np.eye(len(moves))[next_action] * acc_rewards)
-            if depth == 1
-            else board.reward(board.valid_move(state, guess)) + acc_rewards
-        )
+            ) - self.policy(state)
+
+        return advantage / timesteps
 
 
 class King(Piece):
@@ -202,17 +189,16 @@ def training_loop(board, piece, loops, timesteps):
         out = (
             np.array(
                 [
-                    piece.rollout(
+                    np.mean([piece.rollout(
                         board,
                         [piece.moves[n] for n in range(len(piece.moves))],
                         np.array([row, col]),
                         timesteps,
-                    )
+                    ) for _ in range(1)], axis=0)
                     for row in range(board.dims[0])
                     for col in range(board.dims[1])
                 ]
             )
-            / max(1, timesteps)
         )
 
         history = piece.model.fit(
@@ -230,18 +216,18 @@ def training_loop(board, piece, loops, timesteps):
 
 
 def make_board(rows, cols):
-    board = Board(np.zeros((rows, cols)))
+    board = Board(np.zeros((rows, cols))+0.5)
     board.rewards[1][1] = 1.0
-    board.rewards[2][2] = -1.0
-    board.rewards[1][2] = -1.0
-    board.rewards[2][1] = -1.0
+    board.rewards[2][2] = 0.0
+    board.rewards[1][2] = 0.0
+    board.rewards[2][1] = 0.0
     board.rewards[6][6] = 1.0
-    board.rewards[5][5] = -1.0
-    board.rewards[6][5] = -1.0
-    board.rewards[5][6] = -1.0
+    board.rewards[5][5] = 0.0
+    board.rewards[6][5] = 0.0
+    board.rewards[5][6] = 0.0
     return board
 
 
 if __name__ == "__main__":
     board = make_board(8, 8)
-    training_loop(board, King(), 150, 8)
+    training_loop(board, King(), 150, 4)

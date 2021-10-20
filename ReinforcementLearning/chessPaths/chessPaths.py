@@ -60,7 +60,7 @@ class Piece:
                 layers.Dense(length, input_shape=(64,), activation="sigmoid"),
             ]
         )
-        optimizer = optimizers.Adam(learning_rate=0.025)
+        optimizer = optimizers.Adam(learning_rate=0.02, amsgrad=True)
         model.compile(
             loss=self.reinforce,
             optimizer=optimizer,
@@ -74,26 +74,24 @@ class Piece:
     def policy(self, x):
         return self.model(np.array([board.state(x)]))[0]
 
+    def next_state(self, board, moves, x):
+        return np.array(board.valid_move(x, moves[random.choices(range(len(moves)), k=1, weights=self.policy(x))[0]]))
+
     def rollout(self, board, moves, state, timesteps):
-        def next_state(x):
-            return np.array(board.valid_move(x, moves[random.choices(range(len(moves)), k=1, weights=self.policy(x))[0]]))
-        
         p = random.choices(range(len(moves)), k=1, weights=self.policy(state))[0]
+
         states = [np.array(board.valid_move(state, moves[p]))]
-
         for i in range(1,timesteps):
-            states.append(next_state(states[-1]))
+            states.append(self.next_state(board, moves, states[-1]))
 
-        advantage = 0.0
-        for i in range(timesteps-1,0,-1):
-            advantage = (board.reward(states[i]) + advantage - self.policy(states[i-1])) * (self.discount ** (i))
         
-        advantage *= np.eye(len(moves))[p]
-        advantage += np.array(
+        advantage = 0.0
+        for i in range(len(states)-1,-1,-1):
+            advantage = (advantage + board.reward(states[i]) - self.policy(states[i])) * (self.discount ** (i))
+        
+        return (advantage*np.eye(len(moves))[p]) + np.array(
                 [board.reward(board.valid_move(state, action)) for action in moves]
-            ) - self.policy(state)
-
-        return advantage / timesteps
+            ) - (self.policy(state))
 
 
 class King(Piece):
@@ -230,4 +228,4 @@ def make_board(rows, cols):
 
 if __name__ == "__main__":
     board = make_board(8, 8)
-    training_loop(board, King(), 150, 4)
+    training_loop(board, King(), 300, 8)

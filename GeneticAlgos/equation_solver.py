@@ -103,11 +103,11 @@ def prune(offspring, num, target):
     )[:num]
 
 
-target = 7919
+target = 98.6
 chromosomeLength = 8
-growthRate = 100
+growthRate = 1000
 acceptanceRate = 5
-mutationRate = 4
+mutationRate = 100
 
 organism, chromosome = orgSeed(chromosomeLength)
 offspring = generateOffspring(chromosome, growthRate)
